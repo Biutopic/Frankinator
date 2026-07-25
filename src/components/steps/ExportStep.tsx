@@ -136,7 +136,7 @@ export default function ExportStep() {
           </p>
         )}
         <div className="mt-4 flex items-center gap-3 border-t border-zinc-800 pt-3">
-          <Frank kind={allOk ? "sourire" : "pense"} anim="pop" size={56} title="Le vrai Frank" />
+          <Frank kind={allOk ? "face" : "pense"} anim="pop" size={56} title="Le vrai Frank" />
           <p className="text-sm text-amber-300 italic">
             Résultat à faire valider de toute façon par le vrai Frank.
           </p>

@@ -16,7 +16,7 @@ export default function App() {
   return (
     <div className="max-w-6xl mx-auto px-4 py-6">
       <header className="mb-6 flex items-center gap-4">
-        <Frank kind="face" anim="bob" size={64} title="Frank" />
+        <Frank kind="sourire" anim="bob" size={64} title="Frank" />
         <div>
           <h1 className="text-3xl font-black tracking-tight">
             <span className="text-green-400">Frank</span>inator
