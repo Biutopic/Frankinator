@@ -25,3 +25,20 @@ name = "GLOBAL_LIMIT"
 type = "ratelimit"
 namespace_id = "1002"
 simple = { limit = 60, period = 60 }
+
+# Transcription (Whisper) : plus coûteuse -> limites plus strictes.
+[[unsafe.bindings]]
+name = "TRANSCRIBE_IP_LIMIT"
+type = "ratelimit"
+namespace_id = "1003"
+simple = { limit = 4, period = 60 }
+
+[[unsafe.bindings]]
+name = "TRANSCRIBE_GLOBAL_LIMIT"
+type = "ratelimit"
+namespace_id = "1004"
+simple = { limit = 12, period = 60 }
+
+# Workers AI (Whisper) — inclus dans le compte Cloudflare.
+[ai]
+binding = "AI"

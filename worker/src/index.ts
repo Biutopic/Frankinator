@@ -19,12 +19,19 @@ interface RateLimiter {
   limit(options: { key: string }): Promise<{ success: boolean }>;
 }
 
+interface WorkersAI {
+  run(model: string, input: Record<string, unknown>): Promise<unknown>;
+}
+
 export interface Env {
   ANTHROPIC_API_KEY: string;
   ANTHROPIC_MODEL: string;
   ALLOWED_ORIGINS: string;
   PER_IP_LIMIT: RateLimiter;
   GLOBAL_LIMIT: RateLimiter;
+  TRANSCRIBE_IP_LIMIT: RateLimiter;
+  TRANSCRIBE_GLOBAL_LIMIT: RateLimiter;
+  AI: WorkersAI;
 }
 
 const MAX_BODY_BYTES = 200_000;
@@ -48,6 +55,74 @@ function json(body: unknown, status: number, cors: Record<string, string>): Resp
   });
 }
 
+/**
+ * POST /transcribe — transcription Whisper (Workers AI).
+ * Corps : la chaîne base64 de l'audio WAV (texte brut, pas de JSON, pour
+ * rester dans le budget CPU du plan gratuit). Langue via ?lang=fr.
+ * Réponse : { cues: [{ startMs, endMs, text }], text }.
+ */
+const MAX_AUDIO_B64_BYTES = 16_000_000; // ~4 min de WAV mono 16 kHz par morceau
+
+async function handleTranscribe(
+  request: Request,
+  env: Env,
+  cors: Record<string, string>
+): Promise<Response> {
+  const ip = request.headers.get("CF-Connecting-IP") ?? "inconnu";
+  const pass = { success: true };
+  const [perIp, global] = await Promise.all([
+    env.TRANSCRIBE_IP_LIMIT ? env.TRANSCRIBE_IP_LIMIT.limit({ key: ip }) : pass,
+    env.TRANSCRIBE_GLOBAL_LIMIT ? env.TRANSCRIBE_GLOBAL_LIMIT.limit({ key: "global" }) : pass,
+  ]);
+  if (!perIp.success || !global.success)
+    return json(
+      { error: "rate_limited", message: "Trop de transcriptions en cours : réessayez dans une minute." },
+      429,
+      cors
+    );
+
+  const lang = new URL(request.url).searchParams.get("lang") || "fr";
+  const audioB64 = (await request.text()).trim();
+  if (audioB64.length === 0)
+    return json({ error: "empty", message: "Aucun audio reçu." }, 400, cors);
+  if (audioB64.length > MAX_AUDIO_B64_BYTES)
+    return json(
+      { error: "too_large", message: "Morceau audio trop volumineux (max ~4 minutes par envoi)." },
+      413,
+      cors
+    );
+
+  let result: {
+    text?: string;
+    segments?: { start?: number; end?: number; text?: string }[];
+  };
+  try {
+    result = (await env.AI.run("@cf/openai/whisper-large-v3-turbo", {
+      audio: audioB64,
+      task: "transcribe",
+      language: lang,
+      vad_filter: true,
+    })) as typeof result;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return json(
+      { error: "ai_error", message: `Transcription impossible (${msg.slice(0, 120)}).` },
+      502,
+      cors
+    );
+  }
+
+  const cues = (result.segments ?? [])
+    .filter((s) => typeof s.start === "number" && typeof s.end === "number" && (s.text ?? "").trim() !== "")
+    .map((s) => ({
+      startMs: Math.round((s.start as number) * 1000),
+      endMs: Math.round((s.end as number) * 1000),
+      text: (s.text as string).trim(),
+    }));
+
+  return json({ cues, text: result.text ?? "" }, 200, cors);
+}
+
 const worker = {
   async fetch(request: Request, env: Env): Promise<Response> {
     const origin = request.headers.get("Origin");
@@ -61,6 +136,10 @@ const worker = {
     const allowed = env.ALLOWED_ORIGINS.split(",").map((o) => o.trim());
     if (!origin || !allowed.includes(origin))
       return json({ error: "origin", message: "Origine non autorisée." }, 403, cors);
+
+    if (new URL(request.url).pathname === "/transcribe") {
+      return handleTranscribe(request, env, cors);
+    }
 
     if (!env.ANTHROPIC_API_KEY)
       return json(

@@ -34,6 +34,26 @@ export interface Cue {
   splitFrom: number | null;
 }
 
+/** Fabrique un cue neuf avec les valeurs par défaut. */
+export function createCue(id: number, startMs: number, endMs: number, text: string): Cue {
+  return {
+    id,
+    startMs,
+    endMs,
+    originalText: text,
+    correctedText: text,
+    formattedLines: [],
+    isLocked: false,
+    warnings: [],
+    originalStartMs: startMs,
+    originalEndMs: endMs,
+    reviewState: "untouched",
+    proposedText: null,
+    proposedConfidence: null,
+    splitFrom: null,
+  };
+}
+
 /** Problème détecté à l'import ou à la validation. */
 export interface SrtIssue {
   severity: "error" | "warning";

@@ -3,14 +3,19 @@
 import { useCallback, useRef, useState } from "react";
 import { parseSrt } from "@/lib/srt/parse";
 import { applyFrenchTypography } from "@/lib/text/typography";
+import { transcribeMedia } from "@/lib/transcribe/client";
 import { useFrankinator } from "@/lib/store";
+import Frank from "../Frank";
 
-/** Étape 1 — Importer : fichier, glisser-déposer ou texte collé. */
+/** Étape 1 — Importer : SRT (fichier, glisser-déposer, texte collé)
+ *  ou vidéo/audio à transcrire (Whisper via le proxy). */
 export default function ImportStep() {
   const s = useFrankinator();
   const [pasted, setPasted] = useState("");
   const [dragOver, setDragOver] = useState(false);
   const [profileName, setProfileName] = useState("");
+  const [transcribing, setTranscribing] = useState<string | null>(null);
+  const [transcribeError, setTranscribeError] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const importText = useCallback(
@@ -21,13 +26,35 @@ export default function ImportStep() {
     [s]
   );
 
+  const transcribe = useCallback(
+    async (file: File) => {
+      setTranscribeError(null);
+      setTranscribing("Préparation…");
+      try {
+        const cues = await transcribeMedia(file, s.language, setTranscribing);
+        s.loadCues(cues, [], file.name.replace(/\.[^.]+$/, "") + ".srt");
+      } catch (e) {
+        setTranscribeError((e as Error).message);
+      } finally {
+        setTranscribing(null);
+      }
+    },
+    [s]
+  );
+
   const readFile = useCallback(
     (file: File) => {
+      // SRT -> parsing local ; vidéo/audio -> transcription Whisper.
+      const isSrt = /\.srt$/i.test(file.name) || file.type.startsWith("text");
+      if (!isSrt) {
+        void transcribe(file);
+        return;
+      }
       const reader = new FileReader();
       reader.onload = () => importText(String(reader.result ?? ""), file.name);
       reader.readAsText(file, "utf-8");
     },
-    [importText]
+    [importText, transcribe]
   );
 
   const errors = s.issues.filter((i) => i.severity === "error");
@@ -53,12 +80,15 @@ export default function ImportStep() {
             dragOver ? "border-green-400 bg-green-500/10" : "border-zinc-700 hover:border-zinc-500"
           }`}
         >
-          <p className="font-semibold">Glissez-déposez votre fichier .srt ici</p>
-          <p className="text-sm text-zinc-400 mt-1">ou cliquez pour choisir un fichier</p>
+          <p className="font-semibold">Glissez-déposez un fichier .srt — ou une vidéo/audio</p>
+          <p className="text-sm text-zinc-400 mt-1">
+            ou cliquez pour choisir un fichier. Une vidéo est transcrite automatiquement
+            (l&apos;audio est extrait dans votre navigateur, la vidéo ne part jamais).
+          </p>
           <input
             ref={fileInput}
             type="file"
-            accept=".srt,text/plain"
+            accept=".srt,text/plain,video/*,audio/*"
             className="hidden"
             onChange={(e) => {
               const file = e.target.files?.[0];
@@ -67,6 +97,16 @@ export default function ImportStep() {
             }}
           />
         </div>
+
+        {transcribing && (
+          <div className="flex items-center gap-3 border border-zinc-800 rounded-lg p-3">
+            <Frank kind="pense" anim="think" size={44} title="Frank écoute…" />
+            <p className="text-sm text-zinc-300">{transcribing}</p>
+          </div>
+        )}
+        {transcribeError && (
+          <p className="text-sm text-amber-400">⚠️ {transcribeError}</p>
+        )}
 
         <div>
           <label className="block text-sm font-semibold mb-1">Ou collez le contenu SRT brut</label>
