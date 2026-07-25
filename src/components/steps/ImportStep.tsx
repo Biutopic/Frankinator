@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import { parseSrt } from "@/lib/srt/parse";
+import { applyFrenchTypography } from "@/lib/text/typography";
 import { useFrankinator } from "@/lib/store";
 
 /** Étape 1 — Importer : fichier, glisser-déposer ou texte collé. */
@@ -204,12 +205,32 @@ export default function ImportStep() {
             </ul>
           )}
           {s.cues.length > 0 && (
-            <button
-              onClick={() => s.setStep("correct")}
-              className="mt-4 px-5 py-2 bg-green-500 text-zinc-950 rounded-lg font-bold"
-            >
-              Continuer vers la correction →
-            </button>
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <button
+                onClick={() => s.setStep("correct")}
+                className="px-5 py-2 bg-green-500 text-zinc-950 rounded-lg font-bold"
+              >
+                Continuer vers la correction →
+              </button>
+              <button
+                onClick={() => {
+                  // Mode simple : typographie française déterministe (sans IA),
+                  // puis saut direct à l'export — la découpe des lignes et des
+                  // cues trop longs s'applique automatiquement à l'arrivée.
+                  s.setCues(
+                    s.cues.map((c) =>
+                      c.isLocked ? c : { ...c, correctedText: applyFrenchTypography(c.correctedText) }
+                    )
+                  );
+                  s.setStep("export");
+                }}
+                title="Typographie française + découpe automatique, zéro question, SRT direct."
+                className="px-5 py-2 bg-zinc-700 rounded-lg font-semibold text-sm hover:bg-zinc-600"
+              >
+                🚀 Mode simple : « J&apos;ai pas envie de me prendre la tête, exporte-moi juste un
+                SRT, je règle les détails dans Premiere/CapCut. Merci Frankinator »
+              </button>
+            </div>
           )}
         </section>
       )}

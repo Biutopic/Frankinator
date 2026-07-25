@@ -5,6 +5,7 @@ import { useFrankinator, glossaryList } from "@/lib/store";
 import type { Cue } from "@/lib/types";
 import { formatTimecode, parseTimecode } from "@/lib/srt/timecode";
 import { breakIntoLines } from "@/lib/format/linebreak";
+import { formatAllCues } from "@/lib/format/formatter";
 import { mergeCues } from "@/lib/format/merge";
 import { words } from "@/lib/text/tokenize";
 import { useMeasurer } from "../useMeasurer";
@@ -17,6 +18,28 @@ export default function VerifyStep() {
 
   const sorted = useMemo(() => [...s.cues].sort((a, b) => a.startMs - b.startMs), [s.cues]);
   const [currentIdx, setCurrentIdx] = useState(0);
+
+  // Formatage automatique par défaut : si des cues n'ont pas encore de
+  // lignes calculées (import récent, texte édité…), la découpe et les
+  // scissions sont appliquées dès l'arrivée sur cette étape.
+  const autoFormatted = useRef(false);
+  useEffect(() => {
+    if (!ready || autoFormatted.current) return;
+    const stale = s.cues.some(
+      (c) => !c.isLocked && c.formattedLines.length === 0 && c.correctedText.trim() !== ""
+    );
+    if (!stale) return;
+    autoFormatted.current = true;
+    const r = formatAllCues(
+      s.cues,
+      profile,
+      measurer,
+      glossaryList(s.customProtectedText),
+      glossaryList(s.glossaryText)
+    );
+    s.setCues(r.cues, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready]);
   const [playing, setPlaying] = useState(false);
   const [playheadMs, setPlayheadMs] = useState(sorted[0]?.startMs ?? 0);
   const [bg, setBg] = useState<{ url: string; kind: "image" | "video" } | null>(null);
@@ -81,6 +104,15 @@ export default function VerifyStep() {
 
   const overflowing =
     ready && lines ? lines.some((l) => measurer.measure(l) > profile.maxTextWidth * 1.001) : false;
+
+  // Le texte n'est JAMAIS masqué hors cadre : si une ligne dépasse malgré
+  // tout (cue impossible à découper), l'aperçu la réduit pour qu'elle
+  // reste entièrement visible, et l'alerte rouge reste affichée.
+  const fitFactor = useMemo(() => {
+    if (!ready || !lines || lines.length === 0) return 1;
+    const maxW = Math.max(...lines.map((l) => measurer.measure(l)));
+    return maxW > profile.maxTextWidth ? profile.maxTextWidth / maxW : 1;
+  }, [ready, lines, measurer, profile.maxTextWidth]);
 
   const onDragPosition = useCallback(
     (e: React.PointerEvent) => {
@@ -296,7 +328,7 @@ export default function VerifyStep() {
                   style={{
                     fontFamily: `"${measurer.effectiveFamily}", Arial, sans-serif`,
                     fontWeight: profile.fontWeight,
-                    fontSize: profile.fontSizePx * scale,
+                    fontSize: profile.fontSizePx * scale * fitFactor,
                     letterSpacing: `${profile.trackingEm}em`,
                     lineHeight: profile.lineHeight,
                     color: "#fff",

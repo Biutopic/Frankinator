@@ -5,6 +5,7 @@ import { useFrankinator, glossaryList } from "@/lib/store";
 import type { Cue, CorrectionOptions } from "@/lib/types";
 import { correctBatch, getBrowserKey, setBrowserKey } from "@/lib/correction/client";
 import { applyFrenchTypography } from "@/lib/text/typography";
+import { stripHesitations } from "@/lib/text/hesitations";
 import DiffText from "../DiffText";
 import Frank from "../Frank";
 
@@ -115,6 +116,28 @@ export default function CorrectStep() {
       s.cues.map((c) =>
         c.isLocked ? c : { ...c, correctedText: applyFrenchTypography(c.correctedText) }
       )
+    );
+  }, [s]);
+
+  // Un clic, sans IA : retire « euh / heu / hum… » de tous les cues
+  // non verrouillés (annulable avec Ctrl+Z).
+  const removeHeu = useCallback(() => {
+    s.setCues(
+      s.cues.map((c) => {
+        if (c.isLocked) return c;
+        const cleaned = stripHesitations(c.correctedText);
+        if (cleaned === c.correctedText) return c;
+        return {
+          ...c,
+          correctedText: cleaned,
+          formattedLines: [],
+          reviewState: "edited" as const,
+          warnings:
+            cleaned.trim() === ""
+              ? [...c.warnings, "Cue vidé par la suppression des hésitations : fusion ou suppression recommandée."]
+              : c.warnings,
+        };
+      })
     );
   }, [s]);
 
@@ -285,6 +308,14 @@ export default function CorrectStep() {
             className="px-4 py-2 bg-zinc-700 rounded-lg font-semibold text-sm hover:bg-zinc-600"
           >
             Typographie française seule (sans IA)
+          </button>
+          <button
+            onClick={removeHeu}
+            disabled={running || s.cues.length === 0}
+            title="Retire euh, heu, hum… de tous les sous-titres non verrouillés. Annulable (Ctrl+Z)."
+            className="px-4 py-2 bg-zinc-700 rounded-lg font-semibold text-sm hover:bg-zinc-600 disabled:opacity-40"
+          >
+            Supprimer les « euh » (1 clic, sans IA)
           </button>
         </div>
         {error && <p className="mt-2 text-sm text-amber-400">⚠️ {error}</p>}

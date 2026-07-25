@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useFrankinator, glossaryList } from "@/lib/store";
 import { buildExports, downloadFile, validateForExport } from "@/lib/export";
+import { formatAllCues } from "@/lib/format/formatter";
 import { useMeasurer } from "../useMeasurer";
 import Frank, { FRANK_ASSETS } from "../Frank";
 
@@ -52,6 +53,27 @@ export default function ExportStep() {
   const { measurer, ready } = useMeasurer(profile);
   const [copied, setCopied] = useState(false);
   const [grainDeSel, setGrainDeSel] = useState(true);
+
+  // Formatage automatique par défaut : jamais d'export avec des cues
+  // non découpés si l'étape Formater a été sautée.
+  const autoFormatted = useRef(false);
+  useEffect(() => {
+    if (!ready || autoFormatted.current) return;
+    const stale = s.cues.some(
+      (c) => !c.isLocked && c.formattedLines.length === 0 && c.correctedText.trim() !== ""
+    );
+    if (!stale) return;
+    autoFormatted.current = true;
+    const r = formatAllCues(
+      s.cues,
+      profile,
+      measurer,
+      glossaryList(s.customProtectedText),
+      glossaryList(s.glossaryText)
+    );
+    s.setCues(r.cues, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready]);
 
   const checklist = useMemo(
     () =>
