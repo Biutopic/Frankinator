@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { useFrankinator, glossaryList } from "@/lib/store";
 import type { FormatProfile } from "@/lib/types";
-import { formatAllCues } from "@/lib/format/formatter";
+import { formatAllCues, applyRecommendations } from "@/lib/format/formatter";
 import { canMerge, mergeCues } from "@/lib/format/merge";
 import { readingStats, orphanIssue } from "@/lib/format/readingSpeed";
 import { DEFAULT_WEAK_WORDS } from "@/lib/text/weakWords";
@@ -41,6 +41,18 @@ export default function FormatStep() {
     const result = formatAllCues(s.cues, profile, measurer, customProtected, glossary);
     s.setCues(result.cues);
     setRunWarnings(result.warnings);
+    setFormatted(true);
+  }, [s, profile, measurer, customProtected, glossary]);
+
+  // Applique d'un coup toutes les fusions valides qui résolvent un problème
+  // signalé (orphelins, vitesse, cues trop courts), puis reformate. Annulable.
+  const runRecommendations = useCallback(() => {
+    const result = applyRecommendations(s.cues, profile, measurer, customProtected, glossary);
+    s.setCues(result.cues);
+    setRunWarnings([
+      `${result.mergesApplied} fusion${result.mergesApplied > 1 ? "s" : ""} appliquée${result.mergesApplied > 1 ? "s" : ""} automatiquement (annulable avec Ctrl+Z).`,
+      ...result.warnings,
+    ]);
     setFormatted(true);
   }, [s, profile, measurer, customProtected, glossary]);
 
@@ -236,6 +248,14 @@ export default function FormatStep() {
               className="px-5 py-2 bg-green-500 text-zinc-950 rounded-lg font-bold disabled:opacity-40"
             >
               {ready ? "Calculer les lignes et découpes" : "Chargement de la police…"}
+            </button>
+            <button
+              onClick={runRecommendations}
+              disabled={!ready || s.cues.length === 0}
+              title="Fusionne automatiquement les cues à problème (orphelins, vitesse élevée, trop courts) quand la fusion est valide, puis reformate. Annulable (Ctrl+Z)."
+              className="px-5 py-2 bg-zinc-700 rounded-lg font-semibold text-sm hover:bg-zinc-600 disabled:opacity-40"
+            >
+              ✨ Appliquer les recommandations (auto)
             </button>
             {fontFallback && (
               <span className="text-sm text-amber-400">

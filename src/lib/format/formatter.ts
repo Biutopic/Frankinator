@@ -2,7 +2,8 @@ import type { Cue, FormatProfile } from "../types";
 import type { TextMeasurer } from "./measure";
 import { breakIntoLines, type BreakOptions } from "./linebreak";
 import { splitLongCue } from "./split";
-import { orphanIssue } from "./readingSpeed";
+import { canMerge, mergeCues } from "./merge";
+import { orphanIssue, readingStats } from "./readingSpeed";
 import { DEFAULT_WEAK_WORDS } from "../text/weakWords";
 
 /**
@@ -16,6 +17,61 @@ import { DEFAULT_WEAK_WORDS } from "../text/weakWords";
 export interface FormatRunResult {
   cues: Cue[];
   warnings: string[];
+}
+
+/**
+ * « Appliquer les recommandations » : fusionne automatiquement les paires
+ * adjacentes quand la fusion est VALIDE (écart, largeur, vitesse, locuteur,
+ * verrous — via canMerge) ET qu'elle résout un problème signalé (cue
+ * orphelin, vitesse de lecture trop élevée, durée trop courte), puis
+ * relance le formatage complet. Déclenché uniquement par l'utilisateur.
+ */
+export function applyRecommendations(
+  cues: Cue[],
+  profile: FormatProfile,
+  measurer: TextMeasurer,
+  customProtected: string[],
+  glossary: string[],
+  weakWords: string[] = DEFAULT_WEAK_WORDS
+): FormatRunResult & { mergesApplied: number } {
+  const mergeOpts = {
+    measurer,
+    maxWidthPx: profile.maxTextWidth,
+    maxLines: profile.maxLines,
+    weakWords,
+    customProtected,
+    glossary,
+    maxMergeGapMs: profile.maxMergeGapMs,
+    maxCharsPerSecond: profile.maxCharsPerSecond,
+  };
+  const hasIssue = (c: Cue): boolean => {
+    if (orphanIssue(c.correctedText, weakWords)) return true;
+    const stats = readingStats(c, null, profile.maxTextWidth);
+    return (
+      stats.charsPerSecond > profile.maxCharsPerSecond ||
+      stats.durationMs < profile.minCueDurationMs
+    );
+  };
+
+  let work = [...cues].sort((a, b) => a.startMs - b.startMs || a.id - b.id);
+  let mergesApplied = 0;
+  let changed = true;
+  while (changed && mergesApplied < 500) {
+    changed = false;
+    for (let i = 0; i < work.length - 1; i++) {
+      const a = work[i];
+      const b = work[i + 1];
+      if (!hasIssue(a) && !hasIssue(b)) continue;
+      if (!canMerge(a, b, mergeOpts).ok) continue;
+      work = [...work.slice(0, i), mergeCues(a, b), ...work.slice(i + 2)];
+      mergesApplied++;
+      changed = true;
+      break;
+    }
+  }
+
+  const result = formatAllCues(work, profile, measurer, customProtected, glossary, weakWords);
+  return { ...result, mergesApplied };
 }
 
 export function formatAllCues(
