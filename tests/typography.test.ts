@@ -51,3 +51,20 @@ describe("typographie française (règles génériques, aucun remplacement spéc
     expect(applyFrenchTypography("2,5 millions et 45%")).toContain("2,5 millions");
   });
 });
+
+describe("diff : les changements typographiques invisibles ne sont pas surlignés", async () => {
+  const { wordDiff } = await import("@/lib/text/diff");
+
+  it("apostrophe droite -> typographique = identique (version corrigée affichée)", () => {
+    const parts = wordDiff("parce qu'on s'inquiète", "parce qu’on s’inquiète");
+    expect(parts).toHaveLength(1);
+    expect(parts[0].kind).toBe("same");
+    expect(parts[0].text).toBe("parce qu’on s’inquiète");
+  });
+
+  it("une vraie correction reste surlignée", () => {
+    const parts = wordDiff("on s'inquiètes", "on s’inquiète");
+    expect(parts.some((p) => p.kind === "removed" && p.text.includes("inquiètes"))).toBe(true);
+    expect(parts.some((p) => p.kind === "added" && p.text.includes("inquiète"))).toBe(true);
+  });
+});
