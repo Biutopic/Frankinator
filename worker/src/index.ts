@@ -48,7 +48,7 @@ function json(body: unknown, status: number, cors: Record<string, string>): Resp
   });
 }
 
-export default {
+const worker = {
   async fetch(request: Request, env: Env): Promise<Response> {
     const origin = request.headers.get("Origin");
     const cors = corsHeaders(origin, env);
@@ -188,3 +188,5 @@ export default {
     );
   },
 };
+
+export default worker;
