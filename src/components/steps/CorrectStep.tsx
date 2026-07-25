@@ -37,6 +37,10 @@ export default function CorrectStep() {
   const [progress, setProgress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
+  // Vue par défaut : texte final propre. Le diff (texte supprimé barré)
+  // est optionnel pour éviter de croire qu'une suppression n'a pas eu lieu.
+  const [showDiff, setShowDiff] = useState(false);
+  const [info, setInfo] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [replace, setReplace] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -122,11 +126,13 @@ export default function CorrectStep() {
   // Un clic, sans IA : retire « euh / heu / hum… » de tous les cues
   // non verrouillés (annulable avec Ctrl+Z).
   const removeHeu = useCallback(() => {
+    let changed = 0;
     s.setCues(
       s.cues.map((c) => {
         if (c.isLocked) return c;
         const cleaned = stripHesitations(c.correctedText);
         if (cleaned === c.correctedText) return c;
+        changed++;
         return {
           ...c,
           correctedText: cleaned,
@@ -138,6 +144,11 @@ export default function CorrectStep() {
               : c.warnings,
         };
       })
+    );
+    setInfo(
+      changed === 0
+        ? "Aucune hésitation (euh, heu, hum…) trouvée dans les sous-titres."
+        : `✓ ${changed} sous-titre${changed > 1 ? "s" : ""} nettoyé${changed > 1 ? "s" : ""} — les hésitations sont supprimées de l'export. Cochez « Afficher les différences » pour voir ce qui a été retiré (barré).`
     );
   }, [s]);
 
@@ -319,6 +330,7 @@ export default function CorrectStep() {
           </button>
         </div>
         {error && <p className="mt-2 text-sm text-amber-400">⚠️ {error}</p>}
+        {info && <p className="mt-2 text-sm text-green-400">{info}</p>}
 
         {needsKey && (
           <div className="mt-3 border border-amber-700 rounded-lg p-3 text-sm">
@@ -410,6 +422,15 @@ export default function CorrectStep() {
         <button onClick={doReplace} disabled={!search} className="px-3 py-1.5 bg-zinc-700 rounded-lg disabled:opacity-40">
           Remplacer tout
         </button>
+        <label className="flex items-center gap-1.5 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={showDiff}
+            onChange={(e) => setShowDiff(e.target.checked)}
+            className="accent-green-500"
+          />
+          Afficher les différences (texte supprimé barré)
+        </label>
         <span className="text-zinc-500 ml-auto">
           Raccourcis : ↑↓ naviguer · A accepter · R rejeter · L verrouiller · Ctrl+Z/Y
         </span>
@@ -471,7 +492,7 @@ export default function CorrectStep() {
               </div>
             ) : (
               <div className="whitespace-pre-wrap">
-                {cue.correctedText !== cue.originalText ? (
+                {showDiff && cue.correctedText !== cue.originalText && cue.originalText !== "" ? (
                   <DiffText from={cue.originalText} to={cue.correctedText} />
                 ) : (
                   cue.correctedText || <em className="text-zinc-500">(vide)</em>
