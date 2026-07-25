@@ -34,10 +34,12 @@ export function setBrowserKey(key: string | null): void {
 }
 
 const IS_STATIC = process.env.NEXT_PUBLIC_STATIC_EXPORT === "1";
+/** URL du proxy Cloudflare Worker (build statique) — clé cachée côté serveur. */
+const CORRECT_ENDPOINT = process.env.NEXT_PUBLIC_CORRECT_ENDPOINT || "";
 const MODEL = "claude-opus-4-8";
 
-async function correctViaServer(req: CorrectionRequest): Promise<CorrectionResult> {
-  const res = await fetch("/api/correct", {
+async function correctViaServer(req: CorrectionRequest, endpoint = "/api/correct"): Promise<CorrectionResult> {
+  const res = await fetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(req),
@@ -102,6 +104,19 @@ async function correctViaBrowser(req: CorrectionRequest, apiKey: string): Promis
 export async function correctBatch(req: CorrectionRequest): Promise<CorrectionResult> {
   const browserKey = getBrowserKey();
   if (IS_STATIC) {
+    // 1. Proxy serveur (Cloudflare Worker) : clé cachée, accessible à tous.
+    if (CORRECT_ENDPOINT) {
+      try {
+        return await correctViaServer(req, CORRECT_ENDPOINT);
+      } catch (error) {
+        // Proxy indisponible/limité : repli sur la clé personnelle si présente.
+        if (browserKey && (error as { code?: string }).code !== "rate_limited") {
+          return correctViaBrowser(req, browserKey);
+        }
+        throw error;
+      }
+    }
+    // 2. Sans proxy : clé personnelle stockée dans le navigateur.
     if (!browserKey)
       throw Object.assign(
         new Error("Version statique : ajoutez votre clé API Anthropic (stockée uniquement dans votre navigateur)."),

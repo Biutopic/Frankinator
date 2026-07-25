@@ -38,6 +38,9 @@ jobs:
         env:
           STATIC_EXPORT: "1"
           PAGES_BASE_PATH: /${{ github.event.repository.name }}
+          # URL du proxy Cloudflare Worker de correction (variable de dépôt,
+          # ou valeur par défaut ci-dessous une fois le worker déployé).
+          CORRECT_ENDPOINT: ${{ vars.CORRECT_ENDPOINT }}
         run: |
           # Les routes API ne peuvent pas exister dans un export statique.
           rm -rf src/app/api

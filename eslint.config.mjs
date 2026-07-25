@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Fichiers temporaires générés par wrangler (Cloudflare Worker).
+    "worker/.wrangler/**",
   ]),
 ]);
 

@@ -21,6 +21,8 @@ const nextConfig: NextConfig = {
   env: {
     NEXT_PUBLIC_STATIC_EXPORT: isStatic ? "1" : "0",
     NEXT_PUBLIC_BASE_PATH: isStatic ? process.env.PAGES_BASE_PATH || "" : "",
+    // Proxy Cloudflare Worker de correction (build statique uniquement).
+    NEXT_PUBLIC_CORRECT_ENDPOINT: isStatic ? process.env.CORRECT_ENDPOINT || "" : "",
   },
 };
 

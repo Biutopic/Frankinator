@@ -1,0 +1,27 @@
+# Proxy de correction Frankinator — Cloudflare Worker (plan gratuit).
+# La clé Anthropic est un secret Cloudflare, jamais visible du client :
+#   npx wrangler secret put ANTHROPIC_API_KEY
+name = "frankinator-correct"
+main = "src/index.ts"
+compatibility_date = "2026-07-01"
+
+[vars]
+# Origines autorisées (CORS), séparées par des virgules.
+ALLOWED_ORIGINS = "https://biutopic.github.io,http://localhost:3000"
+# Modèle Claude (surchargez ici si besoin de réduire les coûts).
+ANTHROPIC_MODEL = "claude-opus-4-8"
+
+# Limites de débit (API Workers Rate Limiting — incluse dans le plan gratuit).
+# Par IP : 8 requêtes / minute. Globale : 60 requêtes / minute, tous visiteurs
+# confondus — c'est le plafond dur de dépense.
+[[unsafe.bindings]]
+name = "PER_IP_LIMIT"
+type = "ratelimit"
+namespace_id = "1001"
+simple = { limit = 8, period = 60 }
+
+[[unsafe.bindings]]
+name = "GLOBAL_LIMIT"
+type = "ratelimit"
+namespace_id = "1002"
+simple = { limit = 60, period = 60 }
