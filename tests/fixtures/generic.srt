@@ -1,0 +1,15 @@
+1
+00:00:01,000 --> 00:00:03,500
+Bonjour à tous et bienvenue
+
+2
+00:00:03,600 --> 00:00:06,200
+Aujourd'hui on parle d'un sujet passionnant
+
+3
+00:00:06,300 --> 00:00:09,000
+La température est de 20 °C aujourd'hui
+
+4
+00:00:09,100 --> 00:00:12,000
+Nous arriverons à 7 h 30 devant le bâtiment principal

@@ -1,0 +1,23 @@
+1
+00:00:01,000 --> 00:00:03,500
+Premier sous-titre valide
+
+2
+pas un timecode
+Bloc corrompu à signaler
+
+3
+00:00:06,300 --> 00:00:05,000
+Fin avant le début
+
+3
+00:00:09,100 --> 00:00:12,000
+Index dupliqué
+
+7
+00:00:12,500 --> 00:00:14,000
+
+
+8
+00:00:13,000 --> 00:00:15,000
+Chevauche le précédent
