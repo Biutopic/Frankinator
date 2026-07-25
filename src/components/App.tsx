@@ -13,8 +13,6 @@ export default function App() {
   const setStep = useFrankinator((s) => s.setStep);
   const cues = useFrankinator((s) => s.cues);
 
-  const stepIndex = STEPS.findIndex((s) => s.id === step);
-
   return (
     <div className="max-w-6xl mx-auto px-4 py-6">
       <header className="mb-6 flex items-center gap-4">
@@ -59,17 +57,6 @@ export default function App() {
         {step === "export" && <ExportStep />}
       </main>
 
-      <footer className="mt-10 text-xs text-zinc-500 border-t border-zinc-800 pt-4 space-y-1">
-        <p>
-          Confidentialité : l&apos;analyse SRT, le formatage et l&apos;aperçu se font entièrement dans votre
-          navigateur. Seul le texte des sous-titres à corriger est envoyé à Claude (jamais vos médias).
-          Aucun fichier n&apos;est stocké de façon permanente. La clé API reste côté serveur (ou dans votre
-          navigateur en mode statique). Le formatage fonctionne sans correction IA.
-        </p>
-        <p>
-          Étape {stepIndex + 1}/5 — session sauvegardée automatiquement en local.
-        </p>
-      </footer>
     </div>
   );
 }
