@@ -1,5 +1,95 @@
 import { describe, it, expect } from "vitest";
-import { segmentsToCues, mergeChunkCues } from "@/lib/transcribe/segments";
+import {
+  segmentsToCues,
+  mergeChunkCues,
+  groupWords,
+  splitSegmentProportionally,
+  transcriptToCues,
+  type TranscriptWord,
+} from "@/lib/transcribe/segments";
+
+function makeWords(text: string, startMs: number, wordMs = 300, gapMs = 50): TranscriptWord[] {
+  let t = startMs;
+  return text.split(/\s+/).map((w) => {
+    const word = { text: w, startMs: t, endMs: t + wordMs };
+    t += wordMs + gapMs;
+    return word;
+  });
+}
+
+describe("regroupement mot à mot (cues courts)", () => {
+  it("coupe à la ponctuation forte", () => {
+    const words = makeWords("On a fini le tournage. La suite arrive bientôt", 0);
+    const groups = groupWords(words);
+    expect(groups.length).toBe(2);
+    expect(groups[0].text).toBe("On a fini le tournage.");
+    expect(groups[1].text).toBe("La suite arrive bientôt");
+  });
+
+  it("ne produit jamais de cue au-delà de la longueur cible", () => {
+    const long = "alors on va continuer à suivre l'évolution pour ces huit dauphins et puis on va demander des comptes sur les circonstances de ce transfert";
+    const groups = groupWords(makeWords(long, 0));
+    expect(groups.length).toBeGreaterThan(2);
+    for (const g of groups) expect(g.text.length).toBeLessThanOrEqual(60);
+  });
+
+  it("coupe sur un silence long", () => {
+    const a = makeWords("première partie", 0);
+    const b = makeWords("deuxième partie", a[a.length - 1].endMs + 1500);
+    const groups = groupWords([...a, ...b]);
+    expect(groups.length).toBe(2);
+    // Le cue se termine à la fin du dernier mot, pas au début du suivant.
+    expect(groups[0].endMs).toBe(a[a.length - 1].endMs);
+  });
+
+  it("le timing vient des mots (exact)", () => {
+    const words = makeWords("un deux trois", 1000);
+    const groups = groupWords(words);
+    expect(groups[0].startMs).toBe(1000);
+    expect(groups[0].endMs).toBe(words[2].endMs);
+  });
+});
+
+describe("découpage proportionnel (sans timestamps mot à mot)", () => {
+  it("découpe un long segment en morceaux courts qui couvrent tout l'intervalle", () => {
+    const seg = {
+      startMs: 0,
+      endMs: 12_000,
+      text: "Alors on va continuer à suivre l'évolution pour ces huit dauphins, et puis on va demander des comptes sur les circonstances de ce transfert.",
+    };
+    const pieces = splitSegmentProportionally(seg);
+    expect(pieces.length).toBeGreaterThan(2);
+    expect(pieces[0].startMs).toBe(0);
+    expect(pieces[pieces.length - 1].endMs).toBe(12_000);
+    for (let i = 1; i < pieces.length; i++) expect(pieces[i].startMs).toBe(pieces[i - 1].endMs);
+    expect(pieces.map((p) => p.text).join(" ")).toBe(seg.text);
+  });
+
+  it("laisse un segment court intact", () => {
+    const seg = { startMs: 0, endMs: 2000, text: "Bonjour à tous" };
+    expect(splitSegmentProportionally(seg)).toEqual([seg]);
+  });
+});
+
+describe("transcriptToCues (bout en bout)", () => {
+  it("préfère les mots quand ils existent, sinon découpe le segment", () => {
+    const withWords = {
+      startMs: 0,
+      endMs: 3000,
+      text: "phrase avec mots",
+      words: makeWords("phrase avec mots", 0),
+    };
+    const withoutWords = {
+      startMs: 5000,
+      endMs: 17_000,
+      text: "un très long segment sans timestamps mot à mot qui doit être découpé en plusieurs morceaux courts pour rester lisible à l'écran",
+    };
+    const cues = transcriptToCues([withWords, withoutWords]);
+    expect(cues.length).toBeGreaterThan(3);
+    for (const c of cues) expect(c.correctedText.length).toBeLessThanOrEqual(60);
+    expect(cues.map((c) => c.id)).toEqual(cues.map((_, i) => i + 1));
+  });
+});
 
 describe("segments Whisper -> cues", () => {
   it("convertit des segments simples en cues numérotés", () => {

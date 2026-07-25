@@ -94,7 +94,12 @@ async function handleTranscribe(
 
   let result: {
     text?: string;
-    segments?: { start?: number; end?: number; text?: string }[];
+    segments?: {
+      start?: number;
+      end?: number;
+      text?: string;
+      words?: { word?: string; start?: number; end?: number }[];
+    }[];
   };
   try {
     result = (await env.AI.run("@cf/openai/whisper-large-v3-turbo", {
@@ -118,6 +123,14 @@ async function handleTranscribe(
       startMs: Math.round((s.start as number) * 1000),
       endMs: Math.round((s.end as number) * 1000),
       text: (s.text as string).trim(),
+      // Timestamps mot à mot : indispensables pour des cues courts façon Reel.
+      words: (s.words ?? [])
+        .filter((w) => typeof w.start === "number" && typeof w.end === "number" && (w.word ?? "").trim() !== "")
+        .map((w) => ({
+          text: (w.word as string).trim(),
+          startMs: Math.round((w.start as number) * 1000),
+          endMs: Math.round((w.end as number) * 1000),
+        })),
     }));
 
   return json({ cues, text: result.text ?? "" }, 200, cors);

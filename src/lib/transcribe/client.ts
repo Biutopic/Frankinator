@@ -2,7 +2,7 @@
 
 import type { Cue } from "../types";
 import { decodeToMono16k, chunkAudio } from "./audio";
-import { segmentsToCues, mergeChunkCues, type TranscriptSegment } from "./segments";
+import { transcriptToCues, mergeChunkCues, type TranscriptSegment } from "./segments";
 
 /**
  * Transcription d'une vidéo/audio en cues, via le proxy Cloudflare
@@ -41,7 +41,7 @@ export async function transcribeMedia(
     if (!res.ok) {
       throw new Error(data?.message ?? `Erreur de transcription (${res.status}).`);
     }
-    parts.push(segmentsToCues(data?.cues ?? [], chunks[i].offsetMs));
+    parts.push(transcriptToCues(data?.cues ?? [], chunks[i].offsetMs));
   }
 
   const cues = mergeChunkCues(parts);
