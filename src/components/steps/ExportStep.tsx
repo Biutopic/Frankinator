@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useFrankinator, glossaryList } from "@/lib/store";
-import { buildExports, downloadFile, validateForExport } from "@/lib/export";
+import { buildExports, downloadFile, validateForExport, exportBaseName } from "@/lib/export";
 import { formatAllCues } from "@/lib/format/formatter";
+import { burnSubtitles } from "@/lib/burn";
 import { useMeasurer } from "../useMeasurer";
 import Frank, { FRANK_ASSETS } from "../Frank";
 
@@ -53,6 +54,8 @@ export default function ExportStep() {
   const { measurer, ready } = useMeasurer(profile);
   const [copied, setCopied] = useState(false);
   const [grainDeSel, setGrainDeSel] = useState(true);
+  const [burnProgress, setBurnProgress] = useState<number | null>(null);
+  const [burnError, setBurnError] = useState<string | null>(null);
 
   // Formatage automatique par défaut : jamais d'export avec des cues
   // non découpés si l'étape Formater a été sautée.
@@ -177,6 +180,47 @@ export default function ExportStep() {
             </button>
           </div>
         </div>
+
+        {s.mediaFile && (
+          <div className="border border-zinc-800 rounded-xl p-4 space-y-2">
+            <h2 className="font-bold">Vidéo avec sous-titres incrustés</h2>
+            <p className="text-xs text-zinc-500">
+              Générée entièrement dans votre navigateur (la vidéo ne part jamais). Le rendu se fait
+              en temps réel : comptez la durée de la vidéo. Gardez cet onglet visible pendant le rendu.
+            </p>
+            <button
+              onClick={async () => {
+                setBurnError(null);
+                setBurnProgress(0);
+                try {
+                  const result = await burnSubtitles(s.mediaFile!, s.cues, profile, setBurnProgress);
+                  const url = URL.createObjectURL(result.blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = `${exportBaseName(s.fileName)}_FRANKINATED.${result.extension}`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                } catch (e) {
+                  setBurnError((e as Error).message);
+                } finally {
+                  setBurnProgress(null);
+                }
+              }}
+              disabled={burnProgress !== null}
+              className="px-4 py-2 bg-green-500 text-zinc-950 rounded-lg font-bold text-sm disabled:opacity-40"
+            >
+              {burnProgress !== null
+                ? `Rendu en cours… ${Math.round(burnProgress)} %`
+                : "🎬 Générer la vidéo sous-titrée"}
+            </button>
+            {burnProgress !== null && (
+              <div className="h-2 bg-zinc-800 rounded overflow-hidden">
+                <div className="h-full bg-green-500 transition-all" style={{ width: `${burnProgress}%` }} />
+              </div>
+            )}
+            {burnError && <p className="text-sm text-amber-400">⚠️ {burnError}</p>}
+          </div>
+        )}
 
         <div className="border border-zinc-800 rounded-xl p-4 flex flex-wrap gap-2">
           <button

@@ -48,6 +48,8 @@ export interface FrankinatorState {
   correctionProfiles: CorrectionProfile[];
   fontReady: boolean;
   fontFallback: boolean;
+  /** Média source (vidéo/audio transcrit) — en mémoire uniquement, jamais persisté. */
+  mediaFile: File | null;
   // Historique (annuler / rétablir) — non persisté.
   past: HistoryEntry[];
   future: HistoryEntry[];
@@ -63,6 +65,7 @@ export interface FrankinatorState {
   setCustomProtectedText: (v: string) => void;
   setOptions: (patch: Partial<CorrectionOptions>) => void;
   setFontStatus: (ready: boolean, fallback: boolean) => void;
+  setMediaFile: (file: File | null) => void;
   setActiveProfile: (id: string) => void;
   upsertProfile: (profile: FormatProfile) => void;
   removeProfile: (id: string) => void;
@@ -101,6 +104,7 @@ export const useFrankinator = create<FrankinatorState>()(
       correctionProfiles: [],
       fontReady: false,
       fontFallback: false,
+      mediaFile: null,
       past: [],
       future: [],
 
@@ -133,6 +137,7 @@ export const useFrankinator = create<FrankinatorState>()(
       setCustomProtectedText: (customProtectedText) => set({ customProtectedText }),
       setOptions: (patch) => set((s) => ({ options: { ...s.options, ...patch } })),
       setFontStatus: (fontReady, fontFallback) => set({ fontReady, fontFallback }),
+      setMediaFile: (mediaFile) => set({ mediaFile }),
 
       setActiveProfile: (activeProfileId) => set({ activeProfileId }),
       upsertProfile: (profile) =>

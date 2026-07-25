@@ -33,6 +33,8 @@ export default function ImportStep() {
       try {
         const cues = await transcribeMedia(file, s.language, setTranscribing);
         s.loadCues(cues, [], file.name.replace(/\.[^.]+$/, "") + ".srt");
+        // Garde la vidéo en mémoire : aperçu synchronisé + export incrusté.
+        if (file.type.startsWith("video")) s.setMediaFile(file);
       } catch (e) {
         setTranscribeError((e as Error).message);
       } finally {

@@ -42,7 +42,10 @@ export default function VerifyStep() {
   }, [ready]);
   const [playing, setPlaying] = useState(false);
   const [playheadMs, setPlayheadMs] = useState(sorted[0]?.startMs ?? 0);
-  const [bg, setBg] = useState<{ url: string; kind: "image" | "video" } | null>(null);
+  // La vidéo transcrite est le fond d'aperçu par défaut (lecture synchronisée).
+  const [bg, setBg] = useState<{ url: string; kind: "image" | "video"; isProjectMedia?: boolean } | null>(() =>
+    s.mediaFile ? { url: URL.createObjectURL(s.mediaFile), kind: "video", isProjectMedia: true } : null
+  );
   const [bgColor, setBgColor] = useState("#18181b");
   const [showSafeZones, setShowSafeZones] = useState(true);
   const [showGuides, setShowGuides] = useState(true);
@@ -65,7 +68,10 @@ export default function VerifyStep() {
     let raf = 0;
     let last = performance.now();
     const tick = (now: number) => {
-      const t = playheadRef.current + (now - last);
+      // Vidéo du projet présente : elle est l'horloge de référence.
+      const media = videoRef.current;
+      const t =
+        bg?.isProjectMedia && media ? media.currentTime * 1000 : playheadRef.current + (now - last);
       last = now;
       setPlayhead(t);
       const idx = sorted.findIndex((c) => t >= c.startMs && t < c.endMs);
@@ -79,7 +85,29 @@ export default function VerifyStep() {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [playing, sorted, setPlayhead]);
+  }, [playing, sorted, setPlayhead, bg?.isProjectMedia]);
+
+  // Pilotage de la vidéo du projet : lecture/pause avec l'aperçu, son actif.
+  useEffect(() => {
+    const media = videoRef.current;
+    if (!bg?.isProjectMedia || !media) return;
+    if (playing) {
+      media.currentTime = playheadRef.current / 1000;
+      media.muted = false;
+      void media.play().catch(() => {});
+    } else {
+      media.pause();
+    }
+  }, [playing, bg?.isProjectMedia]);
+
+  // Navigation manuelle : cale la vidéo sur le début du cue sélectionné.
+  useEffect(() => {
+    const media = videoRef.current;
+    if (playing || !bg?.isProjectMedia || !media) return;
+    const cue = sorted[currentIdx];
+    if (cue) media.currentTime = cue.startMs / 1000;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentIdx, bg?.isProjectMedia]);
 
   const activeCue = playing
     ? sorted.find((c) => playheadMs >= c.startMs && playheadMs < c.endMs) ?? null
@@ -288,7 +316,16 @@ export default function VerifyStep() {
             <img src={bg.url} alt="" className="absolute inset-0 w-full h-full object-cover" />
           )}
           {bg?.kind === "video" && (
-            <video ref={videoRef} src={bg.url} className="absolute inset-0 w-full h-full object-cover" muted loop autoPlay />
+            <video
+              ref={videoRef}
+              src={bg.url}
+              className="absolute inset-0 w-full h-full object-cover"
+              muted={!bg.isProjectMedia}
+              loop={!bg.isProjectMedia}
+              autoPlay={!bg.isProjectMedia}
+              playsInline
+              preload="auto"
+            />
           )}
 
           {showSafeZones && (
