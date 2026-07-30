@@ -22,18 +22,43 @@ export interface MimeChoice {
   extension: "mp4" | "webm";
 }
 
-/** Choisit le meilleur format supporté par le navigateur (MP4 si possible). */
-export function pickMimeType(isSupported: (mime: string) => boolean): MimeChoice | null {
+/** Choisit le meilleur format supporté par le navigateur.
+ *  MP4 uniquement par défaut (profil H.264 le plus élevé disponible) ;
+ *  le WebM n'est proposé que comme repli explicite. */
+export function pickMimeType(
+  isSupported: (mime: string) => boolean,
+  opts: { mp4Only?: boolean } = {}
+): MimeChoice | null {
+  const mp4Only = opts.mp4Only ?? true;
   const candidates: MimeChoice[] = [
-    { mimeType: 'video/mp4;codecs="avc1.42E01E,mp4a.40.2"', extension: "mp4" },
+    { mimeType: 'video/mp4;codecs="avc1.64002A,mp4a.40.2"', extension: "mp4" }, // High 4.2
+    { mimeType: 'video/mp4;codecs="avc1.4D402A,mp4a.40.2"', extension: "mp4" }, // Main 4.2
+    { mimeType: 'video/mp4;codecs="avc1.42E01E,mp4a.40.2"', extension: "mp4" }, // Baseline
     { mimeType: "video/mp4", extension: "mp4" },
-    { mimeType: "video/webm;codecs=vp9,opus", extension: "webm" },
-    { mimeType: "video/webm", extension: "webm" },
+    ...(mp4Only
+      ? []
+      : [
+          { mimeType: "video/webm;codecs=vp9,opus", extension: "webm" as const },
+          { mimeType: "video/webm", extension: "webm" as const },
+        ]),
   ];
   for (const c of candidates) {
     if (isSupported(c.mimeType)) return c;
   }
   return null;
+}
+
+/** true si le navigateur sait produire un vrai MP4. */
+export function mp4Supported(): boolean {
+  return (
+    typeof MediaRecorder !== "undefined" &&
+    pickMimeType((m) => MediaRecorder.isTypeSupported(m), { mp4Only: true }) !== null
+  );
+}
+
+/** Débit vidéo adapté à la résolution (≈0,2 bit/pixel/frame, 8-20 Mbit/s). */
+export function videoBitrate(width: number, height: number, fps = 30): number {
+  return Math.min(20_000_000, Math.max(8_000_000, Math.round(width * height * fps * 0.2)));
 }
 
 export interface BurnResult {
@@ -45,10 +70,16 @@ export async function burnSubtitles(
   file: File,
   cues: Cue[],
   profile: FormatProfile,
-  onProgress: (percent: number) => void
+  onProgress: (percent: number) => void,
+  opts: { allowWebm?: boolean } = {}
 ): Promise<BurnResult> {
-  const choice = pickMimeType((m) => MediaRecorder.isTypeSupported(m));
-  if (!choice) throw new Error("Ce navigateur ne supporte pas l'enregistrement vidéo.");
+  const choice = pickMimeType((m) => MediaRecorder.isTypeSupported(m), {
+    mp4Only: !(opts.allowWebm ?? false),
+  });
+  if (!choice)
+    throw new Error(
+      "Ce navigateur ne sait pas produire de MP4. Utilisez Chrome ou Edge pour la vidéo incrustée."
+    );
 
   const url = URL.createObjectURL(file);
   const video = document.createElement("video");
@@ -82,7 +113,8 @@ export async function burnSubtitles(
   const tracks = [...canvasStream.getVideoTracks(), ...dest.stream.getAudioTracks()];
   const recorder = new MediaRecorder(new MediaStream(tracks), {
     mimeType: choice.mimeType,
-    videoBitsPerSecond: 8_000_000,
+    videoBitsPerSecond: videoBitrate(canvas.width, canvas.height),
+    audioBitsPerSecond: 192_000,
   });
   const chunks: Blob[] = [];
   recorder.ondataavailable = (e) => {

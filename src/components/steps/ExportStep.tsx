@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useFrankinator, glossaryList } from "@/lib/store";
 import { buildExports, downloadFile, validateForExport, exportBaseName } from "@/lib/export";
 import { formatAllCues } from "@/lib/format/formatter";
-import { burnSubtitles } from "@/lib/burn";
+import { burnSubtitles, mp4Supported } from "@/lib/burn";
 import { useMeasurer } from "../useMeasurer";
 import Frank, { FRANK_ASSETS } from "../Frank";
 
@@ -183,11 +183,17 @@ export default function ExportStep() {
 
         {s.mediaFile && (
           <div className="border border-zinc-800 rounded-xl p-4 space-y-2">
-            <h2 className="font-bold">Vidéo avec sous-titres incrustés</h2>
+            <h2 className="font-bold">Vidéo avec sous-titres incrustés (MP4)</h2>
             <p className="text-xs text-zinc-500">
-              Générée entièrement dans votre navigateur (la vidéo ne part jamais). Le rendu se fait
-              en temps réel : comptez la durée de la vidéo. Gardez cet onglet visible pendant le rendu.
+              MP4 H.264, généré entièrement dans votre navigateur (la vidéo ne part jamais). Rendu
+              en temps réel : comptez la durée de la vidéo, en gardant cet onglet visible.
             </p>
+            {!mp4Supported() && (
+              <p className="text-sm text-amber-400">
+                ⚠️ Ce navigateur ne sait pas produire de MP4 — ouvrez Frankinator dans Chrome ou
+                Edge pour générer la vidéo incrustée.
+              </p>
+            )}
             <button
               onClick={async () => {
                 setBurnError(null);
@@ -206,12 +212,12 @@ export default function ExportStep() {
                   setBurnProgress(null);
                 }
               }}
-              disabled={burnProgress !== null}
+              disabled={burnProgress !== null || !mp4Supported()}
               className="px-4 py-2 bg-green-500 text-zinc-950 rounded-lg font-bold text-sm disabled:opacity-40"
             >
               {burnProgress !== null
                 ? `Rendu en cours… ${Math.round(burnProgress)} %`
-                : "🎬 Générer la vidéo sous-titrée"}
+                : "🎬 Générer la vidéo sous-titrée (MP4)"}
             </button>
             {burnProgress !== null && (
               <div className="h-2 bg-zinc-800 rounded overflow-hidden">
