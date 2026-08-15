@@ -1,33 +1,90 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
+import { spawn } from "child_process";
 import {
   CorrectionRequestSchema,
   CORRECTION_JSON_SCHEMA,
   validateCorrectionResponse,
+  type CorrectionRequest,
 } from "@/lib/correction/schema";
 import { buildSystemPrompt, buildUserPrompt } from "@/lib/correction/prompt";
 
 /**
- * Route serveur de correction linguistique.
- * La clé API reste côté serveur (ANTHROPIC_API_KEY) et n'est jamais
- * exposée au client. Aucun timecode ne transite par cette route.
+ * Route serveur de correction linguistique. Deux moteurs :
+ * 1. ANTHROPIC_API_KEY définie -> API Anthropic (production/serveur).
+ * 2. Sinon, en local -> Claude Code CLI (`claude -p`) sous la session
+ *    connectée de l'utilisateur : couvert par son abonnement, la clé
+ *    n'existe nulle part. Même pattern que Mission Control.
+ * Aucun timecode ne transite par cette route.
  */
 
 export const runtime = "nodejs";
 
 const MODEL = process.env.ANTHROPIC_MODEL || "claude-opus-4-8";
 
-export async function POST(request: Request) {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return NextResponse.json(
-      {
-        error: "missing_api_key",
-        message:
-          "ANTHROPIC_API_KEY n'est pas configurée côté serveur. Ajoutez-la dans .env.local, ou utilisez le mode navigateur.",
-      },
-      { status: 503 }
-    );
+/** Correction via Claude Code CLI local (abonnement de l'utilisateur). */
+async function correctViaClaudeCode(req: CorrectionRequest): Promise<NextResponse> {
+  const prompt = `${buildSystemPrompt()}
+
+${buildUserPrompt(req)}
+
+Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour ni bloc de code, au format exact :
+{"corrections":[{"id":<int>,"correctedText":"<string>","confidence":"high"|"low","warning":<string|null>}]}`;
+
+  // Environnement nettoyé : si ce serveur a été lancé depuis une session
+  // Claude Code, les variables héritées feraient échouer la CLI imbriquée.
+  const env: Record<string, string> = {};
+  for (const [k, v] of Object.entries(process.env)) {
+    if (v !== undefined && !/^CLAUDE/i.test(k)) env[k] = v;
   }
+
+  const stdout = await new Promise<string>((resolve, reject) => {
+    const child = spawn("claude", ["-p", "--output-format", "json"], {
+      shell: true,
+      windowsHide: true,
+      env,
+    });
+    let out = "";
+    let err = "";
+    const timer = setTimeout(() => {
+      child.kill();
+      reject(new Error("Délai dépassé (Claude Code local)."));
+    }, 180_000);
+    child.stdout.on("data", (d) => (out += d));
+    child.stderr.on("data", (d) => (err += d));
+    child.on("error", reject);
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      if (code === 0) resolve(out);
+      else
+        reject(
+          new Error(
+            (err.trim() || out.trim()).slice(0, 200) || `claude -p a échoué (code ${code}).`
+          )
+        );
+    });
+    child.stdin.write(prompt);
+    child.stdin.end();
+  });
+
+  // Enveloppe --output-format json : { result: "<texte du modèle>", ... }
+  const envelope = JSON.parse(stdout) as { result?: string; is_error?: boolean };
+  if (envelope.is_error || typeof envelope.result !== "string")
+    throw new Error("Réponse invalide de Claude Code.");
+  const cleaned = envelope.result.replace(/^```(?:json)?\s*|\s*```$/g, "").trim();
+  const raw = JSON.parse(cleaned);
+
+  const originalById = new Map(req.cues.map((c) => [c.id, c.text]));
+  const validated = validateCorrectionResponse(raw, req.cues.map((c) => c.id), originalById);
+  return NextResponse.json({
+    corrections: validated.valid,
+    missingIds: validated.missingIds,
+    problems: validated.problems,
+    model: "claude-code-local",
+  });
+}
+
+export async function POST(request: Request) {
 
   let body: unknown;
   try {
@@ -44,6 +101,21 @@ export async function POST(request: Request) {
     );
   }
   const req = parsed.data;
+
+  // Sans clé API : moteur local Claude Code (abonnement de l'utilisateur).
+  if (!process.env.ANTHROPIC_API_KEY) {
+    try {
+      return await correctViaClaudeCode(req);
+    } catch (e) {
+      return NextResponse.json(
+        {
+          error: "missing_api_key",
+          message: `Ni ANTHROPIC_API_KEY ni Claude Code local disponibles (${(e as Error).message.slice(0, 120)}). Ajoutez une clé dans .env.local, ou utilisez le mode navigateur.`,
+        },
+        { status: 503 }
+      );
+    }
+  }
 
   const client = new Anthropic();
   try {
